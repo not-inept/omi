@@ -8,6 +8,7 @@ import com.friend.ios.ble.OmiBleManager
 import com.friend.ios.ble.OmiCompanionManager
 import com.friend.ios.batch.OmiBackgroundAudioStreamer
 import com.friend.ios.phonemic.*
+import com.friend.ios.djimic.*
 import android.os.Bundle
 import androidx.annotation.NonNull
 import android.Manifest
@@ -50,6 +51,12 @@ class MainActivity: FlutterActivity() {
         PhoneMicController.initialize(application)
         PhoneMicController.instance.bindFlutterApi(PhoneMicFlutterApi(flutterEngine.dartExecutor.binaryMessenger))
         PhoneMicHostApi.setUp(flutterEngine.dartExecutor.binaryMessenger, PhoneMicHostApiImpl(PhoneMicController.instance))
+
+        // Register Native DJI Mic 3 / Bluetooth communication-device mic Pigeon APIs
+        DjiMicController.initialize(application)
+        DjiMicController.instance.bindFlutterApi(DjiMicFlutterApi(flutterEngine.dartExecutor.binaryMessenger))
+        DjiMicHostApi.setUp(flutterEngine.dartExecutor.binaryMessenger, DjiMicHostApiImpl(DjiMicController.instance))
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NATIVE_BLE_TRANSCRIPT_CHANNEL).setMethodCallHandler {
             call, result ->
             if (call.method == "drain") {
@@ -112,6 +119,7 @@ class MainActivity: FlutterActivity() {
         if (isFinishing) {
             // Engine + main isolate die with the activity; a live capture session must not outlive its consumer.
             if (PhoneMicController.isInitialized) PhoneMicController.instance.onFlutterEngineDestroyed()
+            if (DjiMicController.isInitialized) DjiMicController.instance.onFlutterEngineDestroyed()
             // Background Mode and Transcribe Later both need the foreground service to keep
             // the device connected/capturing after a task close. With both off (default),
             // tear it down so the device disconnects when the app is closed.
