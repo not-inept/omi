@@ -36,6 +36,7 @@ import 'package:omi/services/voice_playback/omi_voice_playback_service.dart';
 import 'package:omi/services/sockets/transcription_service.dart';
 import 'package:omi/services/audio_sources/audio_source.dart';
 import 'package:omi/services/audio_sources/ble_device_source.dart';
+import 'package:omi/services/audio_sources/dji_mic_source.dart';
 import 'package:omi/services/devices/connectors/limitless_connection.dart';
 import 'package:omi/services/devices/models.dart';
 import 'package:omi/services/audio_sources/phone_mic_source.dart';
@@ -1127,6 +1128,12 @@ class CaptureController extends ChangeNotifier
     final deviceModel = pd.modelNumber.isNotEmpty ? pd.modelNumber : "Omi";
     if (device.type == DeviceType.omi || device.type == DeviceType.openglass) {
       _activeSource = BleDeviceSource(codec: codec, deviceId: deviceId, deviceModel: deviceModel);
+    } else if (device.type == DeviceType.djiMic3) {
+      // Headerless PCM16 mono @16kHz over the Bluetooth communication-device
+      // route (see DjiMicSource doc) — not a GATT device, so device.name
+      // (the paired Bluetooth device's own name) is a more accurate WAL
+      // deviceModel than the generic device-info-service fallback above.
+      _activeSource = DjiMicSource(deviceId: deviceId, deviceModel: device.name.isNotEmpty ? device.name : 'DJI Mic 3');
     }
     _wal.getSyncs().phone.setDeviceInfo(deviceId, deviceModel);
 
@@ -1204,9 +1211,11 @@ class CaptureController extends ChangeNotifier
       case DeviceType.bee:
       case DeviceType.fieldy:
       case DeviceType.plaud:
-      // Ray-Ban Meta audio is bridged from the platform HFP route, so there is
-      // no native BLE GATT target; capture runs on the foreground Dart path.
+      // Ray-Ban Meta and DJI Mic 3 audio are both bridged from the platform
+      // Bluetooth communication-device route, so there is no native BLE GATT
+      // target for either; capture runs on the foreground Dart path.
       case DeviceType.raybanMeta:
+      case DeviceType.djiMic3:
         return null;
     }
   }

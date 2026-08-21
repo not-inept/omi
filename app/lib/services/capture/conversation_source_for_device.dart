@@ -36,5 +36,14 @@ String? conversationSourceForDeviceType(DeviceType? type) {
       return 'limitless';
     case DeviceType.raybanMeta:
       return 'rayban_meta';
+    case DeviceType.djiMic3:
+      // TODO(dji-mic-3-backend-source): backend/models/conversation_enums.py's
+      // ConversationSource does not have a 'dji_mic_3' member yet — that's a
+      // backend-only change out of scope for this app PR. Not a functional
+      // break in the meantime: ConversationSource._missing_ falls back to
+      // `unknown` for any unrecognized source string rather than raising, so
+      // audio still streams/transcribes normally; only provenance labeling
+      // is affected until the backend adds this value.
+      return 'dji_mic_3';
   }
 }

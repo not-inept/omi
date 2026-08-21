@@ -32,6 +32,10 @@ void main() {
         DeviceType.friendPendant: 'friend_com',
         DeviceType.limitless: 'limitless',
         DeviceType.raybanMeta: 'rayban_meta',
+        // Not yet a recognized backend ConversationSource member (see the
+        // TODO in conversation_source_for_device.dart) — falls back to
+        // `unknown` server-side rather than breaking capture.
+        DeviceType.djiMic3: 'dji_mic_3',
       };
 
       // Fails if a DeviceType is added without a mapping entry here, forcing the

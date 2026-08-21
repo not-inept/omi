@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/services/audio_sources/audio_source.dart';
 import 'package:omi/services/audio_sources/ble_device_source.dart';
+import 'package:omi/services/audio_sources/dji_mic_source.dart';
 import 'package:omi/services/audio_sources/phone_mic_source.dart';
 import 'package:omi/backend/schema/bt_device/bt_device.dart';
 
@@ -176,6 +177,89 @@ void main() {
 
     test('frame size is 320 bytes (10ms at 16kHz 16-bit mono)', () {
       expect(PhoneMicSource.frameSize, 320);
+    });
+  });
+
+  group('DjiMicSource', () {
+    // Same 16kHz/PCM16/320-byte framing as PhoneMicSource — the native
+    // DjiMicCaptureEngine resamples Bluetooth SCO's variable link rate to
+    // 16kHz before frames ever reach Dart (see
+    // android/.../djimic/DjiMicResampler.kt), so this class's framing tests
+    // mirror PhoneMicSource's 1:1.
+    late DjiMicSource source;
+
+    setUp(() {
+      source = DjiMicSource();
+    });
+
+    test('buffers until 320 bytes accumulated', () {
+      final frames1 = source.processBytes(List.filled(200, 0x42));
+      expect(frames1, isEmpty);
+
+      final frames2 = source.processBytes(List.filled(200, 0x43));
+      expect(frames2.length, 1);
+      expect(frames2[0].payload.length, 320);
+      expect(frames2[0].payload[0], 0x42);
+      expect(frames2[0].payload[199], 0x42);
+      expect(frames2[0].payload[200], 0x43);
+    });
+
+    test('produces multiple frames from large input', () {
+      final frames = source.processBytes(List.filled(960, 0xAA));
+      expect(frames.length, 3);
+      for (final frame in frames) {
+        expect(frame.payload.length, 320);
+      }
+    });
+
+    test('sync key is monotonic and wraps at 255', () {
+      final allFrames = <WalFrame>[];
+      for (int i = 0; i < 256; i++) {
+        allFrames.addAll(source.processBytes(List.filled(320, i % 256)));
+      }
+      expect(allFrames.length, 256);
+      for (int i = 0; i < 256; i++) {
+        expect(allFrames[i].syncKey.bytes, [i]);
+      }
+
+      final wrapped = source.processBytes(List.filled(320, 0));
+      expect(wrapped[0].syncKey.bytes, [0]);
+    });
+
+    test('getSocketPayload returns raw bytes unchanged', () {
+      final raw = [1, 2, 3, 4, 5];
+      expect(source.getSocketPayload(raw), raw);
+    });
+
+    test('flush produces padded frame from remaining buffer', () {
+      source.processBytes(List.filled(100, 0x55));
+      final flushed = source.flush();
+
+      expect(flushed.length, 1);
+      expect(flushed[0].payload.length, 320);
+      expect(flushed[0].payload[0], 0x55);
+      expect(flushed[0].payload[99], 0x55);
+      expect(flushed[0].payload[100], 0);
+    });
+
+    test('flush returns empty when buffer is empty', () {
+      expect(source.flush(), isEmpty);
+    });
+
+    test('exposes correct default codec and device info', () {
+      expect(source.codec, BleAudioCodec.pcm16);
+      expect(source.deviceId, 'dji-mic-3');
+      expect(source.deviceModel, 'DJI Mic 3');
+    });
+
+    test('accepts an overridden deviceId/deviceModel', () {
+      final custom = DjiMicSource(deviceId: 'aa:bb:cc:dd:ee:ff', deviceModel: 'DJI Mic 3 (renamed)');
+      expect(custom.deviceId, 'aa:bb:cc:dd:ee:ff');
+      expect(custom.deviceModel, 'DJI Mic 3 (renamed)');
+    });
+
+    test('frame size is 320 bytes (10ms at 16kHz 16-bit mono)', () {
+      expect(DjiMicSource.frameSize, 320);
     });
   });
 

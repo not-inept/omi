@@ -114,6 +114,10 @@ class DeviceUtils {
           return Assets.images.friendPendant.path;
         case DeviceType.raybanMeta:
           return Assets.images.raybanMeta.path;
+        case DeviceType.djiMic3:
+          // TODO: no DJI Mic 3 artwork in assets/ yet — reusing the generic
+          // Omi image as a neutral placeholder until real artwork is added.
+          return Assets.images.omiWithoutRope.path;
         case DeviceType.omi:
           // For omi type, need to check model/name to distinguish between devkit and regular omi
           if (modelNumber != null && modelNumber.isNotEmpty && modelNumber.toUpperCase() != 'UNKNOWN') {

@@ -184,7 +184,7 @@ int mapCodecToBitDepth(BleAudioCodec codec) {
   }
 }
 
-enum DeviceType { omi, openglass, appleWatch, plaud, bee, fieldy, friendPendant, limitless, raybanMeta }
+enum DeviceType { omi, openglass, appleWatch, plaud, bee, fieldy, friendPendant, limitless, raybanMeta, djiMic3 }
 
 extension DeviceTypeAnalytics on DeviceType {
   String get analyticsVendor {
@@ -206,6 +206,8 @@ extension DeviceTypeAnalytics on DeviceType {
         return 'limitless';
       case DeviceType.raybanMeta:
         return 'meta';
+      case DeviceType.djiMic3:
+        return 'dji';
     }
   }
 }
@@ -635,6 +637,7 @@ class BtDevice {
       case DeviceType.openglass:
       case DeviceType.appleWatch:
       case DeviceType.raybanMeta:
+      case DeviceType.djiMic3:
         return ''; // No warning needed
     }
   }
@@ -673,6 +676,7 @@ class BtDevice {
       case DeviceType.openglass:
       case DeviceType.appleWatch:
       case DeviceType.raybanMeta:
+      case DeviceType.djiMic3:
         return ''; // No warning needed
     }
   }

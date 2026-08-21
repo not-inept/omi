@@ -1,4 +1,4 @@
-enum TransportKind { bluetooth, watchConnectivity, metaDat }
+enum TransportKind { bluetooth, watchConnectivity, metaDat, bluetoothCommDevice }
 
 class DeviceLocator {
   final TransportKind kind;
@@ -25,6 +25,16 @@ class DeviceLocator {
     return DeviceLocator._(kind: TransportKind.metaDat, extras: extras);
   }
 
+  // A device reached through the OS's Bluetooth communication-device audio
+  // route (Bluetooth Classic HFP/SCO) rather than a BLE GATT connection or a
+  // vendor SDK — DJI Mic 3 today, and any future device with the same
+  // "plain Bluetooth headset mic" profile. The stable HFP/SCO uid is carried
+  // on BtDevice.id, mirroring how Ray-Ban Meta's audio-only fallback carries
+  // its HFP uid there.
+  factory DeviceLocator.bluetoothCommDevice({Map<String, Object?> extras = const {}}) {
+    return DeviceLocator._(kind: TransportKind.bluetoothCommDevice, extras: extras);
+  }
+
   // Serialization
   Map<String, dynamic> toJson() {
     return {'kind': kind.index, 'bluetoothId': bluetoothId, 'extras': extras};
@@ -48,6 +58,8 @@ class DeviceLocator {
         return DeviceLocator.watchConnectivity(extras: extras);
       case TransportKind.metaDat:
         return DeviceLocator.metaDat(extras: extras);
+      case TransportKind.bluetoothCommDevice:
+        return DeviceLocator.bluetoothCommDevice(extras: extras);
     }
   }
 }

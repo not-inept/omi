@@ -6,6 +6,7 @@ import 'package:omi/backend/schema/bt_device/bt_device.dart';
 import 'package:omi/services/devices.dart';
 import 'package:omi/services/devices/connectors/apple_watch_connection.dart';
 import 'package:omi/services/devices/connectors/bee_connection.dart';
+import 'package:omi/services/devices/connectors/dji_mic_connection.dart';
 import 'package:omi/services/devices/discovery/device_locator.dart';
 import 'package:omi/services/devices/connectors/fieldy_connection.dart';
 import 'package:omi/services/devices/connectors/friend_pendant_connection.dart';
@@ -16,6 +17,7 @@ import 'package:omi/services/devices/connectors/omiglass_connection.dart';
 import 'package:omi/services/devices/connectors/plaud_connection.dart';
 import 'package:omi/services/devices/connectors/rayban_meta_connection.dart';
 import 'package:omi/services/devices/transports/device_transport.dart';
+import 'package:omi/services/devices/transports/dji_mic_transport.dart';
 import 'package:omi/services/devices/transports/native_ble_transport.dart';
 import 'package:omi/services/devices/transports/rayban_meta_transport.dart';
 import 'package:omi/services/devices/transports/watch_transport.dart';
@@ -120,6 +122,10 @@ class DeviceConnectionFactory {
       case TransportKind.metaDat:
         transport = RayBanMetaTransport(device.id);
         break;
+
+      case TransportKind.bluetoothCommDevice:
+        transport = DjiMicTransport(device.id);
+        break;
     }
 
     switch (device.type) {
@@ -146,6 +152,8 @@ class DeviceConnectionFactory {
         return LimitlessDeviceConnection(device, transport);
       case DeviceType.raybanMeta:
         return RayBanMetaDeviceConnection(device, transport);
+      case DeviceType.djiMic3:
+        return DjiMicDeviceConnection(device, transport);
     }
   }
 }
