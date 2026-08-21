@@ -380,6 +380,8 @@ class BtDevice {
       return await _getDeviceInfoFromAppleWatch(conn as AppleWatchDeviceConnection);
     } else if (type == DeviceType.raybanMeta) {
       return _getDeviceInfoFromRayBanMeta();
+    } else if (type == DeviceType.djiMic3) {
+      return _getDeviceInfoFromDjiMic3();
     } else {
       return await _getDeviceInfoFromOmi(conn);
     }
@@ -394,6 +396,25 @@ class BtDevice {
       hardwareRevision: 'Unknown',
       manufacturerName: 'Meta',
       type: DeviceType.raybanMeta,
+    );
+  }
+
+  // The Bluetooth communication-device route has no GATT device-info
+  // service to read, so static identity fields are all we can report —
+  // mirrors _getDeviceInfoFromRayBanMeta. Without this branch, DjiMic3 fell
+  // through to _getDeviceInfoFromOmi's final `else`, which isn't an
+  // OmiGlassConnection/OmiDeviceConnection so it silently returns
+  // modelNumber='Omi'/type=DeviceType.omi — a real device-identity bug this
+  // branch fixes, not just a naming nicety (device_provider.dart, device
+  // settings, and every wals/*_sync.dart caller of getDeviceInfo would
+  // otherwise show/act on the wrong device).
+  BtDevice _getDeviceInfoFromDjiMic3() {
+    return copyWith(
+      modelNumber: name.isNotEmpty ? name : 'DJI Mic 3',
+      firmwareRevision: 'Unknown',
+      hardwareRevision: 'Unknown',
+      manufacturerName: 'DJI',
+      type: DeviceType.djiMic3,
     );
   }
 

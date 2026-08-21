@@ -1130,10 +1130,10 @@ class CaptureController extends ChangeNotifier
       _activeSource = BleDeviceSource(codec: codec, deviceId: deviceId, deviceModel: deviceModel);
     } else if (device.type == DeviceType.djiMic3) {
       // Headerless PCM16 mono @16kHz over the Bluetooth communication-device
-      // route (see DjiMicSource doc) — not a GATT device, so device.name
-      // (the paired Bluetooth device's own name) is a more accurate WAL
-      // deviceModel than the generic device-info-service fallback above.
-      _activeSource = DjiMicSource(deviceId: deviceId, deviceModel: device.name.isNotEmpty ? device.name : 'DJI Mic 3');
+      // route (see DjiMicSource doc). deviceModel here already resolves
+      // correctly (BtDevice._getDeviceInfoFromDjiMic3 has its own branch),
+      // unlike the generic device-info-service path above.
+      _activeSource = DjiMicSource(deviceId: deviceId, deviceModel: deviceModel);
     }
     _wal.getSyncs().phone.setDeviceInfo(deviceId, deviceModel);
 

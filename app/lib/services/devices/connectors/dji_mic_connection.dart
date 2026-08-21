@@ -60,11 +60,13 @@ class DjiMicDeviceConnection extends DeviceConnection {
       onAudioBytesReceived(bytes);
     });
 
-    // connect() already routes+starts capture (DjiMicTransport.connect calls
-    // DjiMicHostApi.start), unlike RayBanMetaTransport where connect() and
-    // startAudioCapture() are separate steps — nothing to start here.
-    if (!await _djiTransport.isConnected()) {
-      Logger.debug('DJI Mic 3: listener attached but capture is not running');
+    // The mic only flows once native capture starts; start it when the
+    // capture pipeline attaches, so listening state == capturing state —
+    // mirrors RayBanMetaDeviceConnection.performGetBleAudioBytesListener.
+    try {
+      await _djiTransport.startAudioCapture();
+    } catch (e) {
+      Logger.debug('DJI Mic 3: failed to start audio capture: $e');
     }
 
     return subscription;

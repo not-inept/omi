@@ -187,6 +187,20 @@ private class DjiMicScoRoute(
             return
         }
 
+        // AudioManager.mode is process-global, and this app already drives it for
+        // Twilio phone calls (see PhoneCallsPlugin.kt's startBluetoothSco() usage).
+        // If something else already owns MODE_IN_COMMUNICATION (an active call),
+        // refuse rather than stomp it — better to fail this connect than corrupt
+        // a live call's audio. API 31+'s setCommunicationDevice() is properly
+        // scoped per-app by the platform and doesn't have this problem; this
+        // guard only applies to this legacy (API 29-30) fallback.
+        @Suppress("DEPRECATION")
+        if (audioManager.mode != AudioManager.MODE_NORMAL) {
+            Log.w("DjiMic.Route", "connect: refusing — AudioManager.mode is already ${audioManager.mode}, not MODE_NORMAL")
+            onResult(false)
+            return
+        }
+
         // Guards so exactly one of {timeout, broadcast-connected, broadcast-failed}
         // resolves onResult, however they race.
         var resolved = false
@@ -257,7 +271,17 @@ private class DjiMicScoRoute(
         } catch (e: Exception) {
             Log.w("DjiMic.Route", "disconnect: stopBluetoothSco failed: ${e.message}")
         }
+        // Only reset mode if it's still what connect() set it to. This is a
+        // partial mitigation, not full ownership tracking — see the
+        // MODE_NORMAL guard in connect() for the fuller explanation. If a
+        // call started after we connected and is also driving
+        // MODE_IN_COMMUNICATION, this still can't tell the two apart; that
+        // gap needs real cross-subsystem coordination with PhoneCallsPlugin,
+        // which is out of scope here.
         @Suppress("DEPRECATION")
-        audioManager.mode = AudioManager.MODE_NORMAL
+        if (audioManager.mode == AudioManager.MODE_IN_COMMUNICATION) {
+            @Suppress("DEPRECATION")
+            audioManager.mode = AudioManager.MODE_NORMAL
+        }
     }
 }
