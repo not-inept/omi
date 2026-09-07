@@ -500,6 +500,22 @@ class AudioCaptureService: @unchecked Sendable {
       || lower.hasPrefix("el ai ")
   }
 
+  /// A DJI Mic receiver plugged into USB-C. Like the Meta glasses above there
+  /// is no vendor API to ask — DJI publishes no SDK for the Mic line — so the
+  /// USB audio class device's own product name is the only identity signal.
+  ///
+  /// Worth labelling rather than leaving anonymous in the list because this is
+  /// the *good* DJI path: through the receiver the link is 48 kHz / 24-bit,
+  /// where a transmitter paired straight to a phone over Bluetooth is capped at
+  /// 16 kHz / 16-bit (DJI's own Mic 3 FAQ). Matched loosely on "dji" plus
+  /// "mic", which covers the Mic, Mic 2, Mic Mini and Mic 3 receivers without
+  /// claiming to know every product name DJI will ship next.
+  static func isDjiMicName(_ name: String) -> Bool {
+    let lower = name.lowercased()
+    guard lower.contains("dji") else { return false }
+    return lower.contains("mic")
+  }
+
   /// Human-readable name for a CoreAudio device.
   static func deviceName(for deviceID: AudioDeviceID) -> String? {
     deviceStringProperty(deviceID, selector: kAudioObjectPropertyName)

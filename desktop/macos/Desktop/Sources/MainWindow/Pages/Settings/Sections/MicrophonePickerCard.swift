@@ -119,10 +119,10 @@ struct MicrophonePickerCard: View {
         row(
           selected: preferredUID == device.uid,
           title: device.name,
-          subtitle: AudioCaptureService.isMetaGlassesName(device.name)
-            ? "Ray-Ban Meta glasses — voice-quality Bluetooth audio while capturing"
-            : (device.isBluetooth ? "Bluetooth microphone" : nil),
-          badge: AudioCaptureService.isMetaGlassesName(device.name) ? "Glasses" : nil
+          subtitle: Self.subtitle(for: device),
+          badge: AudioCaptureService.isMetaGlassesName(device.name)
+            ? "Glasses"
+            : (AudioCaptureService.isDjiMicName(device.name) ? "DJI" : nil)
         ) {
           preferredUID = device.uid
           onChanged()
@@ -180,6 +180,25 @@ struct MicrophonePickerCard: View {
       }.value
       devices = latest
     } while refreshQueued
+  }
+
+  /// What a row says about itself beneath its name.
+  ///
+  /// The DJI line is the opposite note to the Bluetooth one: a receiver on
+  /// USB-C is the full-quality path, and worth saying so, because the same
+  /// hardware reached the other way (a transmitter paired over Bluetooth) is
+  /// capped at voice quality like any headset.
+  fileprivate static func subtitle(for device: PickerInputDevice) -> String? {
+    if AudioCaptureService.isMetaGlassesName(device.name) {
+      return "Ray-Ban Meta glasses — voice-quality Bluetooth audio while capturing"
+    }
+    if AudioCaptureService.isDjiMicName(device.name) && !device.isBluetooth {
+      return "DJI Mic receiver on USB-C — full-quality audio from its transmitters"
+    }
+    if device.isBluetooth {
+      return "Bluetooth microphone"
+    }
+    return nil
   }
 
   /// True when the user has pinned a device that the current enumeration does not contain.
