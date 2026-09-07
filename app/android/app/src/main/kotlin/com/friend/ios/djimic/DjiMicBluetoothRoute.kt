@@ -16,19 +16,28 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 
 /**
- * Routes system audio input to a Bluetooth communication-device (HFP/SCO)
- * microphone, and lists the candidates a caller can route to. DJI Mic 3
- * connects to Android as a plain Bluetooth Classic HFP device (confirmed via
- * DJI's own Android third-party app compatibility list) — this route
- * abstraction is deliberately generic over "a Bluetooth communication-device
- * mic" rather than DJI-specific, matching the [DjiMicHostApi] contract.
+ * Routes system audio input to a communication-device microphone, and lists
+ * the candidates a caller can route to. DJI hardware reaches the phone two
+ * ways and both are listed here:
+ *
+ *  * a **transmitter in DJI's Bluetooth mode**, which connects to Android as
+ *    a plain Bluetooth Classic HFP device (confirmed via DJI's own Android
+ *    third-party app compatibility list, and by DJI's Mic 3 FAQ, which caps
+ *    that link at 16 kHz / 16-bit "similar to Bluetooth headsets");
+ *  * the **receiver on USB-C**, which enumerates as a standard USB audio
+ *    class input.
+ *
+ * The abstraction is deliberately generic over "a communication-device mic"
+ * rather than DJI-specific — there is no DJI protocol to discover against —
+ * matching the [DjiMicHostApi] contract.
  *
  * Two implementations, selected by SDK level: `AudioDeviceInfo`/
  * `setCommunicationDevice` (API 31+) is the modern, non-deprecated API and
  * the primary path on the vast majority of devices in the field by the time
- * this ships. The legacy `startBluetoothSco()` path (API 29-30, this app's
- * `minSdk`) is exercised far less by real-world Android versions but kept so
- * the feature isn't silently unavailable below API 31.
+ * this ships; it is also the only one that can route to a USB input, so USB
+ * support is API 31+ only. The legacy `startBluetoothSco()` path (API 29-30,
+ * this app's `minSdk`) is exercised far less by real-world Android versions
+ * but kept so the Bluetooth feature isn't silently unavailable below API 31.
  *
  * [onRouteLost] callbacks arrive on whatever thread the underlying platform
  * callback/broadcast runs on (not guaranteed to be main) — callers must hop
@@ -81,34 +90,81 @@ private fun hasBluetoothConnectPermission(context: Context): Boolean {
 /** API 31+: [AudioManager.getAvailableCommunicationDevices] / [AudioManager.setCommunicationDevice]. */
 @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
 private class DjiMicCommunicationDeviceRoute(private val application: Application) : DjiMicBluetoothRoute {
+    private companion object {
+        /** The USB input types Android reports for a class-compliant audio
+         *  interface. TYPE_USB_DEVICE is the plain interface (what the DJI
+         *  receiver enumerates as); TYPE_USB_HEADSET is the same silicon
+         *  behind a headset-shaped descriptor, which some phones report
+         *  instead; TYPE_USB_ACCESSORY is the Android-accessory protocol.
+         *  All three are listed rather than guessing which one this hardware
+         *  and this phone will agree on. */
+        val USB_TYPES = setOf(
+            AudioDeviceInfo.TYPE_USB_DEVICE,
+            AudioDeviceInfo.TYPE_USB_HEADSET,
+            AudioDeviceInfo.TYPE_USB_ACCESSORY,
+        )
+    }
+
     private val audioManager = application.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var listener: AudioManager.OnCommunicationDeviceChangedListener? = null
-    private var connectedUid: String? = null
+
+    /** The `AudioDeviceInfo.id` currently routed to. Route-loss is judged on
+     *  this rather than on the address, because USB inputs have no address —
+     *  comparing addresses would report every USB route as instantly lost. */
+    private var connectedDeviceId: Int? = null
 
     override fun listInputs(): List<BluetoothMicInput> {
-        if (!hasBluetoothConnectPermission(application)) return emptyList()
-        return audioManager.availableCommunicationDevices
-            .filter { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
-            .mapNotNull { device ->
-                val uid = device.address
-                if (uid.isNullOrEmpty()) null else BluetoothMicInput(uid, device.productName?.toString() ?: uid)
+        val devices = audioManager.availableCommunicationDevices
+        val out = mutableListOf<BluetoothMicInput>()
+
+        // BLUETOOTH_CONNECT gates only the Bluetooth half. A user who has
+        // declined the Bluetooth permission but plugged in the receiver must
+        // still see the receiver.
+        if (hasBluetoothConnectPermission(application)) {
+            devices.filter { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+                .mapNotNullTo(out) { device ->
+                    val uid = device.address
+                    if (uid.isNullOrEmpty()) {
+                        null
+                    } else {
+                        BluetoothMicInput(uid, device.productName?.toString() ?: uid, BluetoothMicInputKind.BLUETOOTH)
+                    }
+                }
+        }
+
+        devices.filter { it.type in USB_TYPES }
+            .mapTo(out) { device ->
+                val name = device.productName?.toString()?.takeIf { it.isNotBlank() } ?: "USB audio device"
+                BluetoothMicInput(DjiMicInputUid.encodeUsb(device.id, name), name, BluetoothMicInputKind.USB)
             }
+
+        return out
+    }
+
+    /** Resolves a stored uid against what is plugged in / paired right now.
+     *  Bluetooth matches on address; USB delegates to [DjiMicInputUid.matchUsb]
+     *  (id first, product name after a replug). */
+    private fun resolve(uid: String): AudioDeviceInfo? {
+        val devices = audioManager.availableCommunicationDevices
+        if (!DjiMicInputUid.isUsb(uid)) {
+            if (!hasBluetoothConnectPermission(application)) return null
+            return devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO && it.address == uid }
+        }
+        val usb = devices.filter { it.type in USB_TYPES }
+        val match = DjiMicInputUid.matchUsb(uid, usb.map { it.id to (it.productName?.toString() ?: "") })
+            ?: return null
+        return usb.firstOrNull { it.id == match.first }
     }
 
     override fun connect(uid: String, onResult: (Boolean) -> Unit, onRouteLost: () -> Unit) {
-        if (!hasBluetoothConnectPermission(application)) {
-            onResult(false)
-            return
-        }
-        val target = audioManager.availableCommunicationDevices
-            .firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO && it.address == uid }
+        val target = resolve(uid)
         if (target == null) {
             onResult(false)
             return
         }
 
         val newListener = AudioManager.OnCommunicationDeviceChangedListener { device ->
-            if (device?.address != connectedUid) {
+            if (device?.id != connectedDeviceId) {
                 onRouteLost()
             }
         }
@@ -118,7 +174,7 @@ private class DjiMicCommunicationDeviceRoute(private val application: Applicatio
             return
         }
 
-        connectedUid = uid
+        connectedDeviceId = target.id
         this.listener = newListener
         audioManager.addOnCommunicationDeviceChangedListener(application.mainExecutor, newListener)
         onResult(true)
@@ -133,7 +189,7 @@ private class DjiMicCommunicationDeviceRoute(private val application: Applicatio
             }
         }
         listener = null
-        connectedUid = null
+        connectedDeviceId = null
         try {
             audioManager.clearCommunicationDevice()
         } catch (e: Exception) {
@@ -149,6 +205,13 @@ private class DjiMicCommunicationDeviceRoute(private val application: Applicatio
  * transmitter that is powered off or out of range; [connect] is the real availability
  * check (it waits for [android.media.AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED] to
  * report CONNECTED and fails/returns false on timeout).
+ *
+ * Bluetooth only. `startBluetoothSco()` has no USB analogue, so on API 29-30
+ * a USB-C receiver is simply not offered rather than offered and then failing
+ * to route. Routing capture to a USB input below API 31 would mean
+ * `AudioRecord.setPreferredDevice()` inside [DjiMicCaptureEngine] instead of a
+ * route abstraction, which is a different shape of change and is deliberately
+ * not attempted for two OS versions this app barely sees.
  */
 private class DjiMicScoRoute(
     private val application: Application,
@@ -172,10 +235,19 @@ private class DjiMicScoRoute(
         }
         return bonded
             .filter { DjiMicBluetoothRoute.isAudioDevice(it.bluetoothClass) }
-            .map { device: BluetoothDevice -> BluetoothMicInput(device.address, device.name ?: device.address) }
+            .map { device: BluetoothDevice ->
+                BluetoothMicInput(device.address, device.name ?: device.address, BluetoothMicInputKind.BLUETOOTH)
+            }
     }
 
     override fun connect(uid: String, onResult: (Boolean) -> Unit, onRouteLost: () -> Unit) {
+        if (DjiMicInputUid.isUsb(uid)) {
+            // Never listed by this implementation; a uid stored on a newer OS
+            // and restored here must fail cleanly, not route to the phone mic.
+            Log.w("DjiMic.Route", "connect: USB inputs need API 31+; refusing $uid")
+            onResult(false)
+            return
+        }
         val adapter = BluetoothAdapter.getDefaultAdapter()
         val target = try {
             adapter?.bondedDevices?.firstOrNull { it.address == uid }

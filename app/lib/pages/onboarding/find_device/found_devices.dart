@@ -11,6 +11,7 @@ import 'package:omi/pages/onboarding/apple_watch_permission_page.dart';
 import 'package:omi/providers/device_provider.dart';
 import 'package:omi/providers/onboarding_provider.dart';
 import 'package:omi/services/devices/connectors/apple_watch_connection.dart';
+import 'package:omi/services/devices/discovery/dji_mic_discoverer.dart';
 import 'package:omi/services/devices/discovery/rayban_meta_discoverer.dart';
 import 'package:omi/widgets/rayban_meta_setup_sheet.dart';
 import 'package:omi/services/services.dart';
@@ -382,14 +383,36 @@ class _FoundDevicesState extends State<FoundDevices> {
                   child: Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          () {
-                            final sameNameCount = provider.visibleDeviceList.where((d) => d.name == device.name).length;
-                            return sameNameCount > 1 ? '${device.name} (${device.getShortId()})' : device.name;
-                          }(),
-                          textAlign: TextAlign.left,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 18, color: Colors.black),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              () {
+                                final sameNameCount =
+                                    provider.visibleDeviceList.where((d) => d.name == device.name).length;
+                                return sameNameCount > 1 ? '${device.name} (${device.getShortId()})' : device.name;
+                              }(),
+                              textAlign: TextAlign.left,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 18, color: Colors.black),
+                            ),
+                            // How a DJI input is attached decides what it can do
+                            // (the Bluetooth link is capped at 16 kHz/16-bit per
+                            // DJI's own FAQ; USB-C is not), and two rows for the
+                            // same hardware can appear at once. Say which is
+                            // which rather than leave the user guessing.
+                            if (djiMicLinkLabel(device) != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  djiMicLinkLabel(device)!,
+                                  textAlign: TextAlign.left,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.w400, fontSize: 13, color: Colors.black54),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                       if (provider.isSavedDevice(device))

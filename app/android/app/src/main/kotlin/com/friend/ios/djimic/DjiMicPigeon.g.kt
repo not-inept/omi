@@ -216,31 +216,61 @@ enum class DjiMicCaptureState(val raw: Int) {
 }
 
 /**
- * One Bluetooth communication-device input the OS currently reports as
- * available (paired, and either connected or connectable). [uid] is the
- * stable device address — the authoritative identity a caller should store
- * and reconnect with. [name] is the user-visible Bluetooth device name and
- * is only for display; it is renameable and must not be used as an
- * identity key (mirrors BluetoothHfpInput in pigeon_interfaces.dart).
+ * How a listed input is physically attached. DJI's own hardware offers both
+ * routes and they behave differently, so the app must be able to tell them
+ * apart rather than present one undifferentiated "mic" list:
+ *
+ *  * [bluetooth] — a transmitter paired straight to the phone in DJI's
+ *    Bluetooth mode. Per DJI's Mic 3 FAQ this link is capped at 16 kHz /
+ *    16-bit (the same envelope as a Bluetooth headset), and where two
+ *    transmitters are paired only the first one connected carries audio.
+ *  * [usb] — the receiver (or a transmitter acting as one) plugged into
+ *    USB-C, which enumerates as a standard USB audio class device. Higher
+ *    fidelity than the Bluetooth route and unaffected by SCO.
+ */
+enum class BluetoothMicInputKind(val raw: Int) {
+  BLUETOOTH(0),
+  USB(1);
+
+  companion object {
+    fun ofRaw(raw: Int): BluetoothMicInputKind? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+/**
+ * One communication-device input the OS currently reports as available.
+ * [uid] is the identity a caller should store and reconnect with — the
+ * Bluetooth device address for [BluetoothMicInputKind.bluetooth], and a
+ * `usb:`-prefixed token for [BluetoothMicInputKind.usb] (USB audio devices
+ * have no address, and their numeric AudioDeviceInfo id is reassigned on
+ * every replug, so the token also carries the product name to rematch on).
+ * [name] is the user-visible device name and is only for display; it is
+ * renameable and must not be used as an identity key (mirrors
+ * BluetoothHfpInput in pigeon_interfaces.dart).
  *
  * Generated class from Pigeon that represents data sent in messages.
  */
 data class BluetoothMicInput (
   val uid: String,
-  val name: String
+  val name: String,
+  val kind: BluetoothMicInputKind
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): BluetoothMicInput {
       val uid = pigeonVar_list[0] as String
       val name = pigeonVar_list[1] as String
-      return BluetoothMicInput(uid, name)
+      val kind = pigeonVar_list[2] as BluetoothMicInputKind
+      return BluetoothMicInput(uid, name, kind)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       uid,
       name,
+      kind,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -251,13 +281,14 @@ data class BluetoothMicInput (
       return true
     }
     val other = other as BluetoothMicInput
-    return DjiMicPigeonPigeonUtils.deepEquals(this.uid, other.uid) && DjiMicPigeonPigeonUtils.deepEquals(this.name, other.name)
+    return DjiMicPigeonPigeonUtils.deepEquals(this.uid, other.uid) && DjiMicPigeonPigeonUtils.deepEquals(this.name, other.name) && DjiMicPigeonPigeonUtils.deepEquals(this.kind, other.kind)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + DjiMicPigeonPigeonUtils.deepHash(this.uid)
     result = 31 * result + DjiMicPigeonPigeonUtils.deepHash(this.name)
+    result = 31 * result + DjiMicPigeonPigeonUtils.deepHash(this.kind)
     return result
   }
 }
@@ -270,6 +301,11 @@ private open class DjiMicPigeonPigeonCodec : StandardMessageCodec() {
         }
       }
       130.toByte() -> {
+        return (readValue(buffer) as Long?)?.let {
+          BluetoothMicInputKind.ofRaw(it.toInt())
+        }
+      }
+      131.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           BluetoothMicInput.fromList(it)
         }
@@ -283,8 +319,12 @@ private open class DjiMicPigeonPigeonCodec : StandardMessageCodec() {
         stream.write(129)
         writeValue(stream, value.raw.toLong())
       }
-      is BluetoothMicInput -> {
+      is BluetoothMicInputKind -> {
         stream.write(130)
+        writeValue(stream, value.raw.toLong())
+      }
+      is BluetoothMicInput -> {
+        stream.write(131)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -294,10 +334,13 @@ private open class DjiMicPigeonPigeonCodec : StandardMessageCodec() {
 
 
 /**
- * Dart -> native. getAvailableInputs() lists paired Bluetooth
- * communication-device inputs (not DJI-specific — any Bluetooth headset/mic
- * shows up here too; the UI is responsible for helping the user identify
- * their DJI Mic 3 by name). start() resolves once audio is actually
+ * Dart -> native. getAvailableInputs() lists the communication-device
+ * inputs the OS currently offers, of both kinds: paired Bluetooth mics
+ * (a transmitter in DJI's Bluetooth mode) and USB audio class inputs (the
+ * receiver on USB-C). Neither is DJI-specific — any Bluetooth headset or
+ * USB interface shows up here too; the UI is responsible for helping the
+ * user identify their DJI hardware by name. start() resolves once audio is
+ * actually
  * flowing, or throws a PlatformException with one of: permission_denied
  * (BLUETOOTH_CONNECT or RECORD_AUDIO not granted), input_unavailable (uid
  * no longer among the available inputs), route_failed (the OS would not
