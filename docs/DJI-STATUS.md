@@ -192,8 +192,17 @@ Android's own file picker, and they become conversations:
    own start time, and handed to `LocalWalSync.addExternalWal` — the same door
    the SD-card and flash-page syncs use. No new endpoint; nothing added to the
    backend.
-5. What has been imported is remembered on the phone. **Nothing is ever
+5. Uploading is kicked off immediately (`RecordingTransferCoordinator` with a
+   `userRetry` wake — otherwise imported recordings would sit until the app was
+   next reopened, and `userRetry` is also the one trigger that does not require
+   the auto-sync-offline-recordings preference to be on).
+6. What has been imported is remembered on the phone. **Nothing is ever
    written to the transmitter** — no marker, no rename, no delete.
+
+A transmitter in DJI's dual-file mode writes every take twice, `_orig` and
+`_edit`. Both are listed; only the processed one is ticked. Ticking both would
+make two conversations out of one moment, which is the single likeliest way an
+import goes wrong on real hardware.
 
 Only a confident 30-minute *device* cut is stated as one take. A quick manual
 stop/restart looks identical from outside, so the UI says what it saw rather
@@ -205,7 +214,7 @@ both hold.
 | Suite | Count | What it holds down |
 |---|---|---|
 | `test/unit/dji_mic_wav_test.dart` | 15 | Header walking (`LIST` chunks, `WAVE_FORMAT_EXTENSIBLE`, RF64 refusal), all four sample formats landing on one amplitude, the 15 kHz tone that must not alias to 1 kHz, chunk-boundary determinism |
-| `test/unit/dji_mic_import_test.dart` | 20 | Chunking and offsets, the WAL filename the backend parses, two transmitters at the same second staying separate, a float take not measured a third long, failed imports leaving nothing behind, the registry |
+| `test/unit/dji_mic_import_test.dart` | 22 | Chunking and offsets, the WAL filename the backend parses, two transmitters at the same second staying separate, a float take not measured a third long, failed imports leaving nothing behind, the registry |
 | `test/unit/dji_mic_recordings_test.dart` | 24 | Filename parsing and split-chain detection (pre-existing) |
 | `test/unit/dji_mic_link_kind_test.dart` | 6 | The Bluetooth/USB link kind surviving serialization |
 | `test/unit/audio_source_test.dart` | 49 | Audio source framing, `DjiMicSource` included (pre-existing) |
@@ -240,8 +249,15 @@ Nothing in this list can be settled without the mics and the phone.
 **File transfer**
 - That Android mounts a DJI transmitter over USB-C OTG at all, and that it
   shows up in the system file picker.
-- That `file_picker`'s read stream works over a USB volume's content URI
-  without copying the whole file into the app's cache first.
+- Whether the picker's copy step is workable in practice. This one is
+  **settled and it is a real constraint**: `file_picker` 8.3.2's Android
+  `FileUtils.openFileStream` copies every picked content URI into the app's
+  cache before Dart sees it, `withReadStream` or not (read from the plugin
+  source). So a 30-minute take is duplicated into phone storage — about
+  260 MB — before the import can start on it. The screen says to pick a few at
+  a time, and clears the picker's cache once an import finishes. What is not
+  known is how a real transmitter's volume behaves under that: whether the copy
+  is fast enough to be tolerable, and whether the phone has the headroom.
 - What a real 32-bit float DJI file's header looks like — in particular
   whether it declares itself as plain IEEE float or as
   `WAVE_FORMAT_EXTENSIBLE`. Both are handled; which one arrives is unknown.

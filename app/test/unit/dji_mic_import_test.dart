@@ -349,6 +349,52 @@ void main() {
       ]);
     });
 
+    test('a dual-file take is offered once, not twice', () {
+      // DJI writes _orig and _edit for every take in its default dual-file
+      // mode. Ticking both makes two conversations out of one moment — the
+      // single most likely way an import goes wrong on a real transmitter.
+      DjiMicRecording rec(String name) => djiMicRecordingFromHeader(
+            path: name,
+            fileName: name,
+            sizeBytes: 44 + 144000 * 10,
+            folderKey: 'TX_MIC001_20250530_115001',
+          )!;
+      final offers = djiMicImportOffers(
+        [
+          rec('TX01_MIC002_20250527_202904_orig.wav'),
+          rec('TX01_MIC002_20250527_202904_edit.wav'),
+          rec('TX01_MIC003_20250527_210000_orig.wav'),
+        ],
+        isAlreadyImported: (_) => false,
+      );
+
+      // Everything the user picked is still listed.
+      expect(offers, hasLength(3));
+      final ticked = offers.where((o) => o.selected).map((o) => o.recording.fileName).toList();
+      expect(ticked, [
+        'TX01_MIC002_20250527_202904_edit.wav',
+        'TX01_MIC003_20250527_210000_orig.wav',
+      ]);
+      final sibling = offers.firstWhere((o) => o.recording.fileName.endsWith('202904_orig.wav'));
+      expect(sibling.hasSiblingVariant, isTrue);
+      expect(sibling.selected, isFalse);
+    });
+
+    test('an already-imported take is listed but not ticked', () {
+      DjiMicRecording rec(String name) => djiMicRecordingFromHeader(
+            path: name,
+            fileName: name,
+            sizeBytes: 1000,
+            folderKey: 'f',
+          )!;
+      final offers = djiMicImportOffers(
+        [rec('TX01_MIC002_20250527_202904_orig.wav'), rec('TX01_MIC003_20250527_210000_orig.wav')],
+        isAlreadyImported: (r) => r.micIndex == 2,
+      );
+      expect(offers, hasLength(2));
+      expect(offers.where((o) => o.selected).map((o) => o.recording.micIndex), [3]);
+    });
+
     test('only a device cut is grouped automatically; a manual restart is not', () {
       // notewell/recorders.py and labs/dji-mic-controller both hold this line:
       // a 30-minute cut is the recorder's doing and safe to join, but two

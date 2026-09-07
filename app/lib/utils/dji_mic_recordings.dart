@@ -343,3 +343,52 @@ List<DjiMicRecording> preferredDjiMicVariants(
   });
   return out;
 }
+
+/// One picked recording's default state on the import screen.
+class DjiMicOffer {
+  final DjiMicRecording recording;
+
+  /// Ticked when the screen opens.
+  final bool selected;
+
+  /// True when this is the copy of a take that is not offered by default — the
+  /// raw `_orig` beside a processed `_edit`.
+  final bool hasSiblingVariant;
+
+  const DjiMicOffer({
+    required this.recording,
+    required this.selected,
+    required this.hasSiblingVariant,
+  });
+}
+
+/// Decides what an import screen ticks when a folder has just been picked.
+///
+/// Two rules, and they are the difference between a clean import and a
+/// duplicated day:
+///
+///  * a take already imported is shown but not ticked — a transmitter holds
+///    every recording since it was last formatted, so the same forty takes
+///    come back every time the picker is opened;
+///  * of the two copies DJI's dual-file mode writes for every take, only the
+///    processed one is ticked. Importing both makes two conversations out of
+///    one moment.
+///
+/// Nothing is ever dropped from the list. The user picked these files.
+List<DjiMicOffer> djiMicImportOffers(
+  List<DjiMicRecording> recordings, {
+  required bool Function(DjiMicRecording) isAlreadyImported,
+  String preferredVariant = djiMicPreferredVariant,
+}) {
+  final preferred = preferredDjiMicVariants(recordings, preferred: preferredVariant)
+      .map((r) => r.fileName)
+      .toSet();
+  return recordings.map((r) {
+    final isPreferred = preferred.contains(r.fileName);
+    return DjiMicOffer(
+      recording: r,
+      hasSiblingVariant: !isPreferred,
+      selected: isPreferred && !isAlreadyImported(r),
+    );
+  }).toList();
+}

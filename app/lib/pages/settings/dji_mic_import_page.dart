@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -8,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:omi/backend/preferences.dart';
 import 'package:omi/services/dji_mic_import_service.dart';
 import 'package:omi/services/services.dart';
+import 'package:omi/services/wals/recording_transfer_coordinator.dart';
 import 'package:omi/utils/dji_mic_import_registry.dart';
 import 'package:omi/utils/dji_mic_recordings.dart';
 import 'package:omi/utils/logger.dart';
@@ -40,12 +42,19 @@ class _Candidate {
   final DjiMicImportSource source;
   final DjiMicRecording recording;
   final bool alreadyImported;
+
+  /// True when this is the copy of a take that is *not* offered by default —
+  /// the raw `_orig` beside a processed `_edit`. Still selectable, just not
+  /// ticked, so one moment does not become two conversations.
+  final bool hasSiblingVariant;
+
   bool selected;
 
   _Candidate({
     required this.source,
     required this.recording,
     required this.alreadyImported,
+    required this.hasSiblingVariant,
     required this.selected,
   });
 }
@@ -81,24 +90,32 @@ class _DjiMicImportPageState extends State<DjiMicImportPage> {
       _skippedNames.clear();
     });
     try {
-      // `withReadStream` is what keeps a 250 MB take from being copied into the
-      // app's cache just to be read once. Android hands over a content URI
-      // rather than a path for a USB volume, and this reads straight from it.
+      // No `withReadStream`: on Android it buys nothing. file_picker 8.3.2's
+      // FileUtils.openFileStream copies every picked content URI into the app's
+      // cache and hands back a path either way, and `withReadStream` then just
+      // opens a stream over that copy (checked in the plugin source, not
+      // assumed). So each picked take is duplicated into phone storage at pick
+      // time — a 30-minute one is about 260 MB — which is why the screen asks
+      // for a few at a time and why _clearPickerCache() runs after an import.
+      // `withData` is the one that would load whole files into memory; it is
+      // deliberately left off.
       final result = await FilePicker.platform.pickFiles(
         allowMultiple: true,
         type: FileType.any,
-        withReadStream: true,
       );
       if (result == null || result.files.isEmpty) return;
 
       final candidates = <_Candidate>[];
+      final sources = <String, DjiMicImportSource>{};
+      final recordings = <DjiMicRecording>[];
       for (final file in result.files) {
         final source = _sourceFor(file);
         if (source == null) continue;
-        // Duration here is estimated from the file's size, because reading the
-        // real one means opening every file — and a read stream can only be
-        // opened once, which is the one it needs for the import itself. The
-        // measured duration replaces it as each file is imported.
+        // Duration here is estimated from the file's size — reading the real
+        // one means opening every picked file before the list can be drawn.
+        // The measured duration, from the file's own header, replaces it as
+        // each recording is imported; `durationEstimated` marks the guess with
+        // a leading "≈" so an estimate never reads as a measurement.
         final recording = djiMicRecordingFromHeader(
           path: file.name,
           fileName: file.name,
@@ -109,19 +126,39 @@ class _DjiMicImportPageState extends State<DjiMicImportPage> {
           _skippedNames.add(file.name);
           continue;
         }
-        final already = _registry.contains(source.fileName, source.sizeBytes);
+        sources[file.name] = source;
+        recordings.add(recording);
+      }
+
+      // What is ticked and why lives in djiMicImportOffers, where it is
+      // testable: an already-imported take is shown but not ticked, and of the
+      // two copies DJI's dual-file mode writes for every take only the
+      // processed one is.
+      final offers = djiMicImportOffers(
+        recordings,
+        isAlreadyImported: (r) => _registry.contains(r.fileName, sources[r.fileName]!.sizeBytes),
+      );
+
+      for (final offer in offers) {
+        final source = sources[offer.recording.fileName]!;
         candidates.add(_Candidate(
           source: source,
-          recording: recording,
-          alreadyImported: already,
-          selected: !already,
+          recording: offer.recording,
+          alreadyImported: _registry.contains(source.fileName, source.sizeBytes),
+          hasSiblingVariant: offer.hasSiblingVariant,
+          selected: offer.selected,
         ));
       }
 
       candidates.sort((a, b) => a.recording.startedAt.compareTo(b.recording.startedAt));
       setState(() {
         _candidates = candidates;
-        _chains = findDjiMicSplitChains(candidates.map((c) => c.recording).toList());
+        // Chain detection buckets by variant, so counting chains across both
+        // copies of every take would double every long recording. Count them
+        // over the offered set only.
+        _chains = findDjiMicSplitChains(
+          candidates.where((c) => !c.hasSiblingVariant).map((c) => c.recording).toList(),
+        );
       });
     } on PlatformException catch (e) {
       _snack('Could not open the file picker: ${e.message ?? e.code}');
@@ -176,7 +213,12 @@ class _DjiMicImportPageState extends State<DjiMicImportPage> {
         // The user ticked it deliberately; re-importing is theirs to decide.
         alreadyImported: false,
         onProgress: (p) {
-          if (mounted) setState(() => _fileProgress = p);
+          // A 250 MB file arrives in ~64 KB pieces; rebuilding the screen four
+          // thousand times to move a progress bar is work taken away from the
+          // decode. Whole percents only.
+          if (!mounted) return;
+          if ((p * 100).floor() == (_fileProgress * 100).floor()) return;
+          setState(() => _fileProgress = p);
         },
       );
       results.add(outcome);
@@ -187,6 +229,21 @@ class _DjiMicImportPageState extends State<DjiMicImportPage> {
     }
 
     await _saveRegistry();
+
+    // Nothing else would start the upload. Imported WALs land as
+    // `WalStatus.miss` on disk, and RecordingTransferCoordinator only drains on
+    // a wake — startup, foreground, connectivity, a device connecting. Without
+    // this the recordings would sit there until the app was next backgrounded
+    // and reopened. `userRetry` is the right trigger: the user asked for this
+    // explicitly, and it is the one trigger that does not also require the
+    // auto-sync-offline-recordings preference to be on.
+    unawaited(RecordingTransferCoordinator.instance.wake(WakeTrigger.userRetry));
+
+    // The picker's copies of the source files have served their purpose; left
+    // alone they are a second copy of everything ever imported sitting in the
+    // app's cache.
+    await _clearPickerCache();
+
     if (!mounted) return;
     setState(() {
       _importing = false;
@@ -197,6 +254,16 @@ class _DjiMicImportPageState extends State<DjiMicImportPage> {
       _candidates = [];
       _chains = [];
     });
+  }
+
+  Future<void> _clearPickerCache() async {
+    try {
+      await FilePicker.platform.clearTemporaryFiles();
+    } catch (e) {
+      // Best effort: a cache the OS reclaims anyway is not worth failing an
+      // import that already succeeded.
+      Logger.debug('DJI import: could not clear the picker cache: $e');
+    }
   }
 
   void _snack(String message) {
@@ -255,8 +322,10 @@ class _DjiMicImportPageState extends State<DjiMicImportPage> {
         _step(1, 'Plug the transmitter into the phone with a USB-C cable, or put it in the charging case '
             'and plug that in.'),
         _step(2, 'Tap Choose recordings, then open the transmitter and its DJI_AUDIO folder.'),
-        _step(3, 'Pick the takes you want. Long ones arrive as several files — the recorder cuts every '
-            '30 minutes — and they are joined back up by their timestamps.'),
+        _step(3, 'Pick the takes you want, a few at a time. Android copies each one onto the phone '
+            'before Omi can read it, so a long take needs room twice over until the import finishes.'),
+        _step(4, 'Long takes arrive as several files — the recorder cuts every 30 minutes — and they '
+            'are joined back up by their timestamps.'),
         const SizedBox(height: 20),
         Container(
           padding: const EdgeInsets.all(14),
@@ -336,6 +405,9 @@ class _DjiMicImportPageState extends State<DjiMicImportPage> {
     final subtitle = StringBuffer(_formatStart(rec.startedAt));
     subtitle.write('  ·  ');
     subtitle.write('${rec.durationEstimated ? '≈' : ''}${_formatDuration(rec.durationSec)}');
+    if (candidate.hasSiblingVariant) {
+      subtitle.write('  ·  unprocessed copy of the take above');
+    }
     if (chain != null) {
       final position = chain.parts.indexWhere((p) => p.fileName == rec.fileName) + 1;
       subtitle.write(
@@ -442,8 +514,8 @@ class _DjiMicImportPageState extends State<DjiMicImportPage> {
         if (imported.isNotEmpty) ...[
           const SizedBox(height: 10),
           Text(
-            'They upload and transcribe the same way a recording made on the phone does — automatically, '
-            'and when there is a connection. Watch them in Sync.',
+            'Uploading has started. They transcribe the same way a recording made on the phone does, '
+            'and pick up again by themselves if the connection drops. Watch them in Sync.',
             style: TextStyle(color: Colors.grey.shade400, fontSize: 14, height: 1.45),
           ),
         ],

@@ -48,7 +48,7 @@ transcribes them). Either can put a WAV on disk today.
 
 Two gaps, in the order they are worth closing.
 
-### 1. Label the receiver rather than leaving it anonymous — done
+### 1. Label the receiver rather than leaving it anonymous — written, unseen
 
 `PickerInputDevice` already carried `isBluetooth` and the card already said in
 plain language that a Bluetooth mic runs at voice quality. A DJI receiver
@@ -56,7 +56,8 @@ deserves the opposite note: it is the *high* quality path (48 kHz / 24-bit per
 DJI's specs, where a transmitter paired straight to a phone over Bluetooth is
 capped at 16 kHz / 16-bit).
 
-Implemented: `AudioCaptureService.isDjiMicName()` alongside the existing
+Written and building, never looked at by a person on a screen:
+`AudioCaptureService.isDjiMicName()` alongside the existing
 `isMetaGlassesName()`, and a `DJI` badge with the line *"DJI Mic receiver on
 USB-C — full-quality audio from its transmitters"* in
 `MicrophonePickerCard.swift`. Tests in
@@ -67,7 +68,7 @@ thing — see `djiMicLinkLabel` in
 *Needs hardware:* what the receiver's product name actually is. The match is
 "dji" and "mic" in the same name, which is loose on purpose.
 
-### 2. Import a mounted transmitter's recordings — not done
+### 2. Import a mounted transmitter's recordings — not built
 
 This is the real work, and it is the desktop mirror of what the mobile app now
 does in `app/lib/services/dji_mic_import_service.dart`.
