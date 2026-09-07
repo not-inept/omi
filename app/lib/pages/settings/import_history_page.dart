@@ -12,6 +12,7 @@ import 'package:omi/widgets/shimmer_with_timeout.dart';
 
 import 'package:omi/backend/http/api/imports.dart';
 import 'package:omi/l10n/app_localizations.dart';
+import 'package:omi/pages/settings/dji_mic_import_page.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 import 'package:omi/utils/logger.dart';
 
@@ -430,6 +431,24 @@ class _ImportHistoryPageState extends State<ImportHistoryPage> {
           description: context.l10n.selectZipFileToImport,
           isAvailable: true,
           onTap: _isUploading ? () {} : _startLimitlessImport,
+        ),
+        // DJI Mic recordings live on the transmitter's own storage and come
+        // across the USB-C cable, so this one does not go through the backend
+        // import jobs above: it decodes on the phone and joins the same local
+        // sync queue a phone recording uses. See dji_mic_import_page.dart.
+        _buildImportSourceCard(
+          name: 'DJI Mic',
+          // TODO: no DJI artwork in assets/ yet — the card's errorBuilder
+          // renders a neutral device icon until there is. Same gap as the
+          // DeviceType.djiMic3 placeholder in lib/utils/device.dart.
+          logoPath: 'assets/competitor-logos/dji-mic-logo.jpg',
+          description: 'Connect a transmitter by USB-C',
+          isAvailable: true,
+          onTap: _isUploading
+              ? () {}
+              : () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const DjiMicImportPage()),
+                  ),
         ),
         // Coming soon placeholder
         Container(

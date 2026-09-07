@@ -10,17 +10,26 @@
 /// Android device — see the "cannot verify" note in this feature's plan for
 /// why that separation matters here.
 ///
-/// This is groundwork for DJI Mic 3 file import (Phase 2 of that plan): it
-/// prepares and labels recordings found in a user-picked folder (an
-/// OTG-mounted transmitter, or files already copied off one), but does not
-/// itself upload/ingest anything — see import_history_page.dart's
-/// `otherDevicesComingSoon` slot, the intended landing spot, and the TODO
-/// there for what's still missing on the backend side.
+/// This labels recordings found among files the user picked off a transmitter
+/// (over USB-C, or already copied onto the phone). Turning them into
+/// conversations is `lib/services/dji_mic_import_service.dart`; reading their
+/// audio is `lib/utils/dji_mic_wav.dart`.
 library;
+
+import 'dart:math' as math;
+
+import 'package:omi/utils/dji_mic_wav.dart';
 
 /// 24-bit PCM, 48kHz, mono — DJI Mic 3's default internal-recording format
 /// (32-bit float is also selectable in the transmitter's own settings, which
 /// changes this; this constant matches only the 24-bit default).
+///
+/// **A last resort for estimating duration, not a measurement.** A 32-bit
+/// float take is 4 bytes per sample, so dividing its size by this overstates
+/// its length by a third — and a wrong end time is exactly what breaks
+/// [findDjiMicSplitChains], which decides whether two files are one take by
+/// asking whether the second starts where the first ended. Use
+/// [djiMicRecordingFromHeader], which reads the rate the file declares.
 const int bytesPerSec24_48Mono = 48000 * 3;
 
 /// FAT32 cannot hold a file of 4 GiB or more. A WAV header also stores its
@@ -114,6 +123,12 @@ class DjiMicRecording {
   final int sizeBytes;
   final double durationSec;
 
+  /// True when [durationSec] came from the 24-bit byte-rate assumption
+  /// because the file's own header could not be read. Chain detection is only
+  /// as good as the end times it is given, so an estimate has to be visible
+  /// rather than silently equal to a measurement.
+  final bool durationEstimated;
+
   /// Groups recordings from the same folder — an OTG-mounted transmitter's
   /// take folder, or wherever the caller found the files. Chunk-chain
   /// detection only compares recordings sharing the same [folderKey].
@@ -129,6 +144,7 @@ class DjiMicRecording {
     required this.sizeBytes,
     required this.durationSec,
     required this.folderKey,
+    this.durationEstimated = false,
   });
 
   DateTime get endsAt => startedAt.add(Duration(milliseconds: (durationSec * 1000).round()));
@@ -240,4 +256,90 @@ List<DjiMicSplitChain> findDjiMicSplitChains(
 int predictedMergeBytes(List<DjiMicRecording> parts) {
   final payload = parts.fold<int>(0, (sum, r) => sum + (r.sizeBytes - wavHeaderBytes).clamp(0, 1 << 62));
   return payload + wavHeaderBytes;
+}
+
+/// Builds a [DjiMicRecording] from a picked file, measuring its duration from
+/// its own header rather than guessing at its format.
+///
+/// [header] is what [parseDjiMicWavHeader] returned for this file. Pass null
+/// only when the header could not be read at all — the duration then falls
+/// back to the 24-bit assumption, and [DjiMicRecording.durationEstimated] says
+/// so, so the UI can mark it rather than present a guess as a measurement.
+///
+/// [sizeBytes] is the real file length. A recording cut short by a flat
+/// battery declares more audio in its header than it holds, so the smaller of
+/// the two is what gets measured.
+///
+/// Returns null when [fileName] is not a DJI recording name — that is the
+/// filter that keeps everything else in a picked folder out of the list.
+DjiMicRecording? djiMicRecordingFromHeader({
+  required String path,
+  required String fileName,
+  required int sizeBytes,
+  required String folderKey,
+  DjiMicWavInfo? header,
+}) {
+  final parsed = parseDjiMicRecordingName(fileName);
+  if (parsed == null) return null;
+
+  final double durationSec;
+  if (header != null && header.byteRate > 0) {
+    final available = math.max(0, sizeBytes - header.dataOffset);
+    durationSec = header.durationSecForDataBytes(math.min(header.dataLength, available));
+  } else {
+    durationSec = math.max(0, sizeBytes - wavHeaderBytes) / bytesPerSec24_48Mono;
+  }
+
+  return DjiMicRecording(
+    path: path,
+    fileName: fileName,
+    txUnit: parsed.txUnit,
+    micIndex: parsed.micIndex,
+    startedAt: parsed.startedAt,
+    variant: parsed.variant,
+    sizeBytes: sizeBytes,
+    durationSec: durationSec,
+    folderKey: folderKey,
+    durationEstimated: header == null || header.byteRate <= 0,
+  );
+}
+
+/// The `_orig` variant is the raw recording; `_edit` is the same take with the
+/// transmitter's voice preset, low cut, noise cancellation and adaptive gain
+/// applied (DJI writes both at once in dual-file mode). Importing both would
+/// hand Omi the same conversation twice, so an import offers one by default.
+///
+/// The processed one is the default: DJI's own processing is tuned for this
+/// microphone, and a transcript benefits from noise cancellation more than it
+/// benefits from an untouched original.
+const String djiMicPreferredVariant = 'edit';
+
+/// Given every recording found, the ones to offer by default — the preferred
+/// variant of each take, and any take that only exists in one variant.
+///
+/// Never drops a recording that has no sibling: a transmitter set to record a
+/// single file writes only `_orig`, and a user who set it that way must still
+/// see their takes.
+List<DjiMicRecording> preferredDjiMicVariants(
+  List<DjiMicRecording> recordings, {
+  String preferred = djiMicPreferredVariant,
+}) {
+  final byTake = <String, List<DjiMicRecording>>{};
+  for (final r in recordings) {
+    final key = '${r.folderKey}|${r.txUnit}|${r.micIndex}|${r.startedAt.millisecondsSinceEpoch}';
+    (byTake[key] ??= []).add(r);
+  }
+  final out = <DjiMicRecording>[];
+  for (final group in byTake.values) {
+    if (group.length == 1) {
+      out.add(group.first);
+      continue;
+    }
+    out.add(group.firstWhere((r) => r.variant == preferred, orElse: () => group.first));
+  }
+  out.sort((a, b) {
+    final byTime = a.startedAt.compareTo(b.startedAt);
+    return byTime != 0 ? byTime : a.fileName.compareTo(b.fileName);
+  });
+  return out;
 }
