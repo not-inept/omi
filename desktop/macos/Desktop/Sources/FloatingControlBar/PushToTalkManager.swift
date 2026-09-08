@@ -1589,6 +1589,50 @@ class PushToTalkManager: ObservableObject {
     sendQuery(query, wasFollowUp: wasFollowUp, turnID: turnID)
   }
 
+  /// Routes a transcript the always-on ambient transcriber already produced through the
+  /// exact same answer path a push-to-talk question uses — same visible response, same
+  /// spoken playback — without opening a second physical microphone capture.
+  ///
+  /// Mints the turn with `.automation` intent, which is the same intent the
+  /// `beginPushToTalkForAutomation()` test bridge above uses for "no physical capture
+  /// buffer for this manager to silence-gate" turns
+  /// (`shouldFinalizeCapturedInputPhysically`): the reducer's `.finalizeCapturedInput`
+  /// effect for an `.automation` turn is a no-op in `handleVoiceTurnEffect` rather than
+  /// calling back into this manager's own `continueFinalization()`/`sendTranscript()`
+  /// (which expect a real captured-audio turn and would otherwise see empty
+  /// `transcriptSegments` and finish the turn as `.silentRejected`). Publishing
+  /// `.finalize` then `.transcriptionFinal` mirrors the exact fact sequence
+  /// `sendTranscript(turnID:)` publishes right before it calls `sendQuery`, so this turn
+  /// reaches `sendQuery` in the same reducer state a real PTT turn would.
+  @discardableResult
+  func submitAlwaysRespondQuery(_ text: String) -> Bool {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return false }
+
+    // Never steal the mic/turn out from under a manual PTT press already in flight.
+    guard Self.admitsListeningStart(activeTurnID: currentVoiceTurnID, phase: phase) else {
+      log("PushToTalkManager: always-respond skipped — PTT busy (phase=\(String(describing: phase)))")
+      return false
+    }
+    if isBlockedByUsageLimit() { return false }
+
+    let turnID = voiceTurnCoordinator.begin(intent: .automation)
+    guard voiceTurnCoordinator.activeTurnID == turnID else { return false }
+
+    voiceTurnCoordinator.publish(.finalize(turnID: turnID))
+    guard voiceTurnCoordinator.activeTurnID == turnID,
+      voiceTurnCoordinator.activeTurn?.phase == .finalizing
+    else { return false }
+
+    voiceTurnCoordinator.publish(.transcriptionFinal(turnID: turnID, text: trimmed))
+    guard voiceTurnCoordinator.activeTurnID == turnID else { return false }
+
+    let wasFollowUp = barState?.showingAIResponse == true
+    log("PushToTalkManager: always-respond dispatching query (\(trimmed.count) chars)")
+    sendQuery(trimmed, wasFollowUp: wasFollowUp, turnID: turnID)
+    return true
+  }
+
   private func sendQuery(_ query: String, wasFollowUp: Bool, turnID: VoiceTurnID) {
     guard voiceTurnCoordinator.requireCurrentOwner(for: turnID) != nil else {
       log("PushToTalkManager: refusing provider dispatch after authenticated owner changed")

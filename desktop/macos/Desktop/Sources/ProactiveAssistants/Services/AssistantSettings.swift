@@ -15,6 +15,10 @@ class AssistantSettings {
   }
 
   nonisolated static let audioRecordingModeDefaultsKey = "audioRecordingMode"
+  /// Public so Settings can bind it directly with `@AppStorage`, the same way
+  /// `audioRecordingModeDefaultsKey` above is bound — the toggle sits beside that mode
+  /// switcher and should stay in sync with it the same self-refreshing way.
+  nonisolated static let alwaysRespondEnabledDefaultsKey = "alwaysRespondEnabled"
 
   // MARK: - UserDefaults Keys
 
@@ -27,6 +31,9 @@ class AssistantSettings {
   private let voiceLanguagesKey = "voiceAssistantLanguages"
   private let transcriptionVocabularyKey = "transcriptionVocabulary"
   private let vadGateEnabledKey = "vadGateEnabled"
+  /// Must match `alwaysRespondEnabledDefaultsKey` above — kept as a literal (not a
+  /// `Self.` reference) to match every other key in this list.
+  private let alwaysRespondEnabledKey = "alwaysRespondEnabled"
   private let batchTranscriptionEnabledKey = "batchTranscriptionEnabled"
   private let legacyTranscriptionEnabledKey = "transcriptionEnabled"
   private let legacySystemAudioCaptureModeKey = "systemAudioCaptureMode"
@@ -41,6 +48,9 @@ class AssistantSettings {
   private let defaultTranscriptionAutoDetect = true
   private let defaultTranscriptionVocabulary: [String] = []
   private let defaultVadGateEnabled = false
+  /// Off by default — a user who turns on continuous ("Always On") listening has not
+  /// also asked the assistant to start answering things it overhears.
+  private let defaultAlwaysRespondEnabled = false
   private let defaultBatchTranscriptionEnabled = false
   private let defaultAudioRecordingMode: AudioRecordingMode = .onlyMeetings
   private(set) var transcriptionVocabularyRevision: UInt64 = 0
@@ -59,6 +69,7 @@ class AssistantSettings {
       transcriptionVocabularyKey: defaultTranscriptionVocabulary,
       vadGateEnabledKey: defaultVadGateEnabled,
       batchTranscriptionEnabledKey: defaultBatchTranscriptionEnabled,
+      alwaysRespondEnabledKey: defaultAlwaysRespondEnabled,
     ])
   }
 
@@ -306,6 +317,18 @@ class AssistantSettings {
     }
   }
 
+  /// Whether the assistant should answer questions it overhears while continuous
+  /// ("Always On") listening is active, without waiting for the push-to-talk shortcut.
+  /// Desktop-local only — never synced to the backend (see `SettingsSyncManager`/
+  /// `APIClient+Settings.swift`, which do not enumerate this key).
+  var alwaysRespondEnabled: Bool {
+    get { UserDefaults.standard.bool(forKey: alwaysRespondEnabledKey) }
+    set {
+      UserDefaults.standard.set(newValue, forKey: alwaysRespondEnabledKey)
+      NotificationCenter.default.post(name: .assistantSettingsDidChange, object: nil)
+    }
+  }
+
   /// Returns vocabulary with "Omi" always included (for DeepGram)
   var effectiveVocabulary: [String] {
     var vocab = Set(transcriptionVocabulary)
@@ -325,6 +348,7 @@ class AssistantSettings {
     transcriptionVocabulary = defaultTranscriptionVocabulary
     vadGateEnabled = defaultVadGateEnabled
     batchTranscriptionEnabled = defaultBatchTranscriptionEnabled
+    alwaysRespondEnabled = defaultAlwaysRespondEnabled
   }
 
   // MARK: - Supported Languages

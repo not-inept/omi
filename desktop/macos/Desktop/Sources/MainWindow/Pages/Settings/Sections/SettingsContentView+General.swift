@@ -91,6 +91,42 @@ extension SettingsContentView {
         }
       }
 
+      // Sits directly beside Audio Recording above — same card group, not its own
+      // settingsCard, so the two never drift apart if this pane gets reflowed later.
+      settingsCard(settingId: "general.alwaysrespond") {
+        HStack(spacing: OmiSpacing.lg) {
+          SettingsIconTile(symbol: "bubble.left.and.bubble.right.fill")
+
+          VStack(alignment: .leading, spacing: OmiSpacing.xxs) {
+            Text("Always Respond")
+              .scaledFont(size: OmiType.subheading, weight: .semibold)
+              .foregroundColor(Ink.primary)
+
+            Text(alwaysRespondSubtitle)
+              .scaledFont(size: OmiType.body)
+              .foregroundColor(Ink.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+
+          Spacer()
+
+          Toggle(
+            "",
+            isOn: Binding(
+              get: { alwaysRespondEnabled },
+              set: { newValue in
+                alwaysRespondEnabled = newValue
+                AssistantSettings.shared.alwaysRespondEnabled = newValue
+                AnalyticsManager.shared.settingToggled(setting: "always_respond", enabled: newValue)
+              }
+            )
+          )
+          .toggleStyle(OmiToggleStyle())
+          .labelsHidden()
+          .frame(width: 36, height: 20)
+        }
+      }
+
       // Notifications toggle
       settingsCard(settingId: "general.notifications") {
         VStack(spacing: OmiSpacing.md) {
@@ -274,6 +310,15 @@ extension SettingsContentView {
       if appState.isAwaitingMeeting { return "Only Meetings — waiting for a call" }
       return appState.isTranscribing ? "Only Meetings — recording a call" : "Only Meetings — ready"
     }
+  }
+
+  private var alwaysRespondSubtitle: String {
+    guard audioRecordingMode == .always else {
+      return "Answer questions it overhears — needs Always On above"
+    }
+    return alwaysRespondEnabled
+      ? "Answering questions it overhears, without the push-to-talk key"
+      : "Off — Omi only answers when you press the push-to-talk key"
   }
 }
 

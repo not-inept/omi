@@ -26,6 +26,10 @@ extension AppState {
       return
     }
     sttSession.prepareForStart()
+    // A fresh session must never let an "Always Respond" quiet-window timer or
+    // already-answered segment id from the *previous* session suppress or fire
+    // against unrelated speech in this one.
+    alwaysRespondDebouncer.reset()
     silentMicRecoveryAttempts = 0
     currentConversationRole = conversationRole
     meetingBoundaryInProgress = false

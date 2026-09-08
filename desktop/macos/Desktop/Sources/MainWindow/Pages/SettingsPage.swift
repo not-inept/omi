@@ -201,6 +201,10 @@ struct SettingsContentView: View {
   @AppStorage(AssistantSettings.audioRecordingModeDefaultsKey) var audioRecordingModeRaw =
     AssistantSettings.AudioRecordingMode.onlyMeetings.rawValue
 
+  // Sits beside Audio Recording above. Off by default; only meaningful while that
+  // mode is "Always On" — see `alwaysRespondSubtitle` in the General section.
+  @AppStorage(AssistantSettings.alwaysRespondEnabledDefaultsKey) var alwaysRespondEnabled = false
+
   // Log export state
 
   // Focus Assistant states

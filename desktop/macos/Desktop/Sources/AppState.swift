@@ -512,6 +512,9 @@ class AppState: ObservableObject {
   let maxInMemorySegments = 200
   var totalSegmentCount = 0
   var totalWordCount = 0
+  /// Settles ambient-transcript segment corrections for the "Always Respond" feature.
+  /// See `AppState+ListenEvents.considerAlwaysRespond(for:)`.
+  let alwaysRespondDebouncer = AlwaysRespondSegmentDebouncer()
 
   var recordingStartTime: Date?
   /// Published: the capture-source label renders this, and the preferred-mic

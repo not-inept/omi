@@ -26,6 +26,8 @@ extension AppState {
         FloatingBarVoicePlaybackService.shared.interruptCurrentResponse()
       }
 
+      considerAlwaysRespond(for: segment)
+
       // Convert backend segment to local SpeakerSegment
       let translations = (segment.translations ?? []).map {
         SegmentTranslation(lang: $0.lang, text: $0.text)
@@ -107,6 +109,44 @@ extension AppState {
     // Persist segments to DB for crash safety (upsert by backend segment ID)
     if let sessionId = currentSessionId, !segmentsToPersist.isEmpty {
       enqueueTranscriptPersistence(segmentsToPersist, sessionId: sessionId)
+    }
+  }
+
+  /// "Always Respond" (Settings → General, beside Audio Recording): when continuous
+  /// ("Always On") listening is on and the toggle is on, a segment that reads as
+  /// addressed to the assistant is answered through the same path push-to-talk uses,
+  /// without waiting for the shortcut.
+  ///
+  /// Called on every incoming segment, including corrections to one already seen — the
+  /// backend upserts by `segment.id` (see the upsert/append branches below) and this
+  /// struct carries no `is_final` flag, so `alwaysRespondDebouncer` is what turns that
+  /// stream of corrections into a single settled answer per utterance.
+  private func considerAlwaysRespond(for segment: TranscriptionService.BackendSegment) {
+    func admits(text: String) -> Bool {
+      AlwaysRespondGate.admitsCandidate(
+        isUser: segment.is_user,
+        text: text,
+        alwaysRespondEnabled: AssistantSettings.shared.alwaysRespondEnabled,
+        audioRecordingModeIsAlways: AssistantSettings.shared.audioRecordingMode == .always,
+        isAssistantSpeaking: FloatingBarVoicePlaybackService.shared.isSpeaking
+      )
+    }
+
+    guard admits(text: segment.text) else { return }
+
+    // Fall back to a start-time bucket when the backend sends no id — corrections to
+    // the same utterance are observed to keep the same start time even as end/text change.
+    let segmentID = segment.id ?? "start:\(segment.start)"
+    alwaysRespondDebouncer.segmentUpdated(id: segmentID, text: segment.text) { settledText in
+      // Re-check at settle time, not just at arrival: the toggle, the listening mode,
+      // or assistant-speaking state (the echo guard) may have changed during the quiet
+      // window, and the classifier only runs once the text has actually settled.
+      guard admits(text: settledText),
+        AddressedToAssistantClassifier.isAddressedToAssistant(settledText)
+      else { return }
+
+      log("Transcription [ALWAYS-RESPOND]: dispatching settled segment as a question")
+      PushToTalkManager.shared.submitAlwaysRespondQuery(settledText)
     }
   }
 
