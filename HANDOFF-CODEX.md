@@ -1,5 +1,7 @@
 # Handoff to Codex — DJI Mic 3 fork of Omi
 
+> Superseded by [HANDOFF.md](HANDOFF.md) (the lab-wide handoff standard); kept here for full history.
+
 Written 2026-09-08. Mason is handing this fork to Codex today. Read this
 before touching anything; `docs/DJI-STATUS.md` and `docs/DJI-DESKTOP.md` are
 the deeper detail this note points at rather than repeats.
