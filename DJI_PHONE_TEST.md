@@ -1,13 +1,60 @@
 # DJI Mic 3 — first phone test
 
-None of the DJI work has **ever run on a device**. This is the checklist for
-the first real test: install the APK, then three things in order — pair a
-transmitter over Bluetooth, plug the receiver into USB-C, and plug a
-transmitter in to transfer its recordings.
+## Mason's five-minute test
+
+The app has never heard a DJI mic. This finds out whether it can, in five
+minutes, with one transmitter and the S25. The receiver and file transfer
+come after, only if this works.
+
+**Before you start (an agent does this, not you):** the Mac's helper is
+running (`OMI_DEV_HOST=192.168.0.171 scripts/dev-harness/dev-up.sh`) and the
+phone is on the same Wi-Fi. The app is the one called **Omi Dev**, not the
+Play Store Omi.
+
+1. **Pair the mic to the phone.** Hold the transmitter's link button about
+   two seconds until it blinks blue. On the phone: Settings → Bluetooth →
+   Pair new device → tap the one named like "DJI MIC 3" (if you renamed it,
+   it may say FIZZBO or MAGGY). Done when the phone says it is connected.
+2. **Open Omi Dev.** Sign in with any test account it offers. Say yes to
+   Microphone and to Nearby devices when asked. Both are needed.
+3. **Pick the mic.** In the app's find-device screen the transmitter is
+   listed as a DJI Mic 3 with the line "Paired over Bluetooth". Tap it.
+4. **Talk for twenty seconds** into the transmitter, holding the phone at
+   arm's length. Words should start appearing on the screen.
+5. **Switch the transmitter off** while it is still recording, then back on.
+
+Then say which of these you saw:
+
+- **Words appeared and sounded like you** — it works. The rest of the file
+  is for a later day.
+- **Recording ran but nothing came through** — the phone never handed the
+  mic over. Expected first-time failure; nothing you did wrong.
+- **Words appeared but the playback sounds like a chipmunk or a slowed
+  tape** — the audio arrived at the wrong speed. Useful; say so.
+- **The mic was never in the app's list** — tell me what the phone's own
+  Bluetooth screen called it.
+- **Something crashed or froze** — say when (which step).
+
+That is the whole report. If the phone is plugged into the Mac while you
+test, an agent collects the logs; if not, the words above are enough.
+
+**Two optional extras, two minutes each, only if step 4 worked:**
+
+- Plug the **receiver** into the phone's USB-C port. In the same find-device
+  screen a second DJI row should appear saying "Connected by USB-C". Tap it
+  and talk. Say whether the row appeared and whether words came through.
+- Plug a **transmitter** into the phone's USB-C port. In the app go to
+  Settings → Import → DJI Mic → Choose recordings, open the drive's
+  `DJI_AUDIO` folder, tick two short takes, import. Say whether the drive
+  appeared in the picker and whether the takes turned into conversations.
+
+---
+
+## Agent reference — everything below is for whoever runs the Mac side
 
 `docs/DJI-STATUS.md` is the fuller picture: what DJI's own documentation
 confirms, what builds, and everything that cannot be verified without the
-hardware in hand.
+hardware in hand. `docs/DJI-IOS.md` is the iPhone side.
 
 ## The APK
 
@@ -16,10 +63,10 @@ app/build/app/outputs/flutter-apk/app-dev-debug.apk
 ```
 
 - Debug build, dev flavor (`com.friend.ios.dev`), debug keys only.
-- Rebuilt 2026-09-07 with the USB-input and file-import work in it.
+- Rebuilt 2026-10-07 with the USB-input and file-import work in it.
 - Built with Flutter 3.44.5 (the repo's FVM pin: `app/.fvm/flutter_sdk`).
-- Baked-in config: `local_dev` profile, backend `http://192.168.0.168:8000/`,
-  Firebase Auth emulator `192.168.0.168:9099` — that was this Mac's LAN IP at
+- Baked-in config: `local_dev` profile, backend `http://192.168.0.171:8000/`,
+  Firebase Auth emulator `192.168.0.171:9099` — that was this Mac's LAN IP at
   build time. Check it's still right with `ipconfig getifaddr en0`; if it
   changed, rebuild (command at the bottom).
 
@@ -29,7 +76,7 @@ The dev build signs in against the local harness, not the real backend. On the
 Mac, from the repo root:
 
 ```bash
-OMI_DEV_HOST=192.168.0.168 scripts/dev-harness/dev-up.sh
+OMI_DEV_HOST=192.168.0.171 scripts/dev-harness/dev-up.sh
 ```
 
 `OMI_DEV_HOST` makes the harness bind so the phone can reach it (it binds

@@ -87,6 +87,7 @@ final class QuickActionsIconPatcher: NSObject {
   private let appleRemindersService = AppleRemindersService()
   private let appleHealthService = AppleHealthService()
   private var phoneMicController: PhoneMicController?
+  private var djiMicHostApi: DjiMicHostApiImpl?
   private var notificationTitleOnKill: String?
   private var notificationBodyOnKill: String?
 
@@ -148,6 +149,16 @@ final class QuickActionsIconPatcher: NSObject {
           let controller = PhoneMicController(flutterApi: phoneMicFlutterApi)
           phoneMicController = controller
           PhoneMicHostApiSetup.setUp(binaryMessenger: messenger, api: PhoneMicHostApiImpl(controller: controller))
+      }
+
+      // DJI Mic 3 (a transmitter paired over Bluetooth HFP, or the receiver on
+      // USB-C) — Pigeon APIs. Same AVAudioSession route the Ray-Ban HFP mic
+      // uses; the impl mirrors the Android DjiMicController state machine.
+      if let messenger = (window?.rootViewController as? FlutterViewController)?.binaryMessenger {
+          let djiFlutterApi = DjiMicFlutterApi(binaryMessenger: messenger)
+          let djiApi = DjiMicHostApiImpl(flutterApi: djiFlutterApi)
+          djiMicHostApi = djiApi
+          DjiMicHostApiSetup.setUp(binaryMessenger: messenger, api: djiApi)
       }
 
       // Retrieve the link from parameters

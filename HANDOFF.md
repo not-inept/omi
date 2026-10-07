@@ -12,9 +12,11 @@ pushed anywhere. Built: Bluetooth listening, USB listening, USB file
 import (all Android), the desktop mic-picker label, and an unrelated
 desktop "Always Respond" toggle. **Nothing has run against real DJI
 hardware** — a debug APK was installed once on the S25 (`R5CY50KXJWL`),
-not yet run through pairing/capture. iOS has a Pigeon stub only, no
-Swift implementation. Latest commit `5b52718d11` (2026-09-08). Working
-tree clean.
+not yet run through pairing/capture. iOS now has a Swift implementation of
+the Pigeon contract (Bluetooth HFP and USB audio inputs through
+AVAudioSession; typechecks, registered, never run) — plan and sizes in
+`docs/DJI-IOS.md`. A fresh debug APK (2026-10-07, Mac IP 192.168.0.171) is
+at `app/build/app/outputs/flutter-apk/app-dev-debug.apk`, not installed.
 
 ## Next
 
@@ -40,5 +42,6 @@ Kotlin/Swift suites cited in HANDOFF-CODEX.md were not re-run this session (unve
 
 ## Log
 
+2026-10-07 claude: 41/41 DJI dart tests pass; rebuilt the dev debug APK for the Mac's new IP (.171); S25 not reachable by serial over adb, APK left on disk; wrote the iOS Swift listening path (DjiMic/ in the Runner target) and docs/DJI-IOS.md; rewrote DJI_PHONE_TEST.md's owner part as a five-minute test and queued it as a Mortar action.
 2026-09-17 claude: created HANDOFF.md from the lab standard, condensing HANDOFF-CODEX.md; ran the three DJI-specific dart test files (41/41 pass); no code changes.
 2026-09-08 claude: fork handed to Codex — full state, mergeability gaps and the PR checklist in HANDOFF-CODEX.md.

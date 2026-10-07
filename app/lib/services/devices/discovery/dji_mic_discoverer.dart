@@ -64,7 +64,7 @@ class DjiMicDiscoverer extends DeviceDiscoverer {
   String get name => 'DJI Mic 3';
 
   @override
-  bool get isSupported => Platform.isAndroid;
+  bool get isSupported => Platform.isAndroid || Platform.isIOS;
 
   @override
   Future<DeviceDiscoveryResult> discover({int timeout = 5}) async {
