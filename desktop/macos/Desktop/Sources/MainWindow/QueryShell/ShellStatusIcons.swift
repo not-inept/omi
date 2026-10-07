@@ -451,8 +451,7 @@ struct ShellStatusIcons: View {
       mode: CaptureListeningLogic.listeningModeTitle(
         appState: appState, raw: audioRecordingModeRaw),
       isAwaitingMeeting: appState.isAwaitingMeeting,
-      next: CaptureListeningLogic.audioRecordingModeTitle(
-        CaptureListeningLogic.nextAudioRecordingMode(after: listeningMode)),
+      next: CaptureListeningLogic.nextClickTitle(mode: listeningMode),
       hasMicrophonePermission: appState.hasMicrophonePermission)
   }
 

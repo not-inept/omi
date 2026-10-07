@@ -33,6 +33,11 @@ enum CaptureListeningLogic {
   }
 
   static func listeningModeTitle(appState: AppState, raw: String) -> String {
+    // Hands-free owns the readout while it is on: the mode underneath is an implementation
+    // detail, and "Always On" would hide the one state the user needs to see — paused.
+    if HandsFreeListeningSettings.isEnabled {
+      return HandsFreeListening.barTitle(for: handsFreeState(appState: appState))
+    }
     // Surface the explicitly-chosen mic as the visible capture source. Meta
     // glasses advertise a Bluetooth codename (e.g. "EL AI 000F"), so product-
     // name matching alone can't identify them — an explicit user selection is
@@ -60,6 +65,29 @@ enum CaptureListeningLogic {
     case .onlyMeetings:
       return appState.isAwaitingMeeting ? "Only Meetings" : "In Meeting"
     }
+  }
+
+  /// The hands-free state as far as the synchronous surfaces (top bar, Home) can know it. The
+  /// "chosen mic missing" case needs a device enumeration, which only the Settings card does;
+  /// here it is `nil`, so that card is where a missing receiver is reported.
+  static func handsFreeState(appState: AppState) -> HandsFreeListening.State {
+    HandsFreeListening.state(
+      enabled: HandsFreeListeningSettings.isEnabled,
+      paused: HandsFreeListeningSettings.isPaused,
+      hasMicrophonePermission: appState.hasMicrophonePermission,
+      isTranscribing: appState.isTranscribing,
+      preferredUID: UserDefaults.standard.string(
+        forKey: AudioCaptureService.preferredInputUIDDefaultsKey) ?? "",
+      preferredDeviceIsPresent: nil,
+      recordingInputDeviceName: appState.recordingInputDeviceName)
+  }
+
+  /// What one click on the listening control selects next, named for the tooltip.
+  static func nextClickTitle(mode: AssistantSettings.AudioRecordingMode) -> String {
+    if HandsFreeListeningSettings.isEnabled {
+      return HandsFreeListening.barClickTitle(paused: HandsFreeListeningSettings.isPaused)
+    }
+    return audioRecordingModeTitle(nextAudioRecordingMode(after: mode))
   }
 
   /// Off → Always On → Only Meetings → Off.
@@ -93,6 +121,28 @@ enum CaptureListeningLogic {
 
   // MARK: Actions
 
+  /// Pause when listening, resume when paused. Resuming needs the microphone grant; a click spent
+  /// on the permission prompt returns `nil` like the ordinary cycle does.
+  @discardableResult
+  static func pauseOrResumeHandsFree(appState: AppState, audioRecordingModeRaw: Binding<String>)
+    -> AssistantSettings.AudioRecordingMode?
+  {
+    if HandsFreeListeningSettings.isPaused {
+      guard appState.hasMicrophonePermission else {
+        appState.requestMicrophonePermission()
+        return nil
+      }
+      HandsFreeListeningSettings.resume()
+    } else {
+      HandsFreeListeningSettings.pause()
+    }
+    let landed = AssistantSettings.shared.audioRecordingMode
+    audioRecordingModeRaw.wrappedValue = landed.rawValue
+    AnalyticsManager.shared.settingToggled(
+      setting: "hands_free_listening_paused", enabled: HandsFreeListeningSettings.isPaused)
+    return landed
+  }
+
   /// Advance the control one step. Returns the mode it landed on so a caller can react to the
   /// transition itself, or `nil` when the click was spent on the permission prompt and the state
   /// did not move.
@@ -100,6 +150,11 @@ enum CaptureListeningLogic {
   static func cycleListening(
     appState: AppState, audioRecordingModeRaw: Binding<String>, isTogglingListening: Binding<Bool>
   ) -> AssistantSettings.AudioRecordingMode? {
+    // While hands-free is on, the control is its one-click Pause/Resume. Cycling the recording
+    // policy underneath it would silently break the switch's promise.
+    if HandsFreeListeningSettings.isEnabled {
+      return pauseOrResumeHandsFree(appState: appState, audioRecordingModeRaw: audioRecordingModeRaw)
+    }
     let currentMode = audioRecordingMode(raw: audioRecordingModeRaw.wrappedValue)
     let nextMode = nextAudioRecordingMode(after: currentMode)
     let enabled = nextMode != .off

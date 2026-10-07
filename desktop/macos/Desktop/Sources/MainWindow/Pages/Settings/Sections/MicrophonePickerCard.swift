@@ -2,8 +2,10 @@ import CoreAudio
 import OmiTheme
 import SwiftUI
 
+/// Shared with the hands-free card in Settings → General, which needs the same "is the chosen
+/// mic plugged in right now" answer.
 @MainActor
-private final class AudioInputDeviceListObserver: ObservableObject {
+final class AudioInputDeviceListObserver: ObservableObject {
   @Published private(set) var revision = 0
 
   private var isObserving = false

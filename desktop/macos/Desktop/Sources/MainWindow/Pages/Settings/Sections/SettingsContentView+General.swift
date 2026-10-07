@@ -127,6 +127,12 @@ extension SettingsContentView {
         }
       }
 
+      // Hands-free: the two cards above plus the chosen microphone behind one switch, with a
+      // Pause button and a status line. Built for the DJI Mic receiver on USB-C; works with any mic.
+      settingsCard(settingId: "general.handsfree") {
+        HandsFreeListeningCard(appState: appState)
+      }
+
       // Notifications toggle
       settingsCard(settingId: "general.notifications") {
         VStack(spacing: OmiSpacing.md) {

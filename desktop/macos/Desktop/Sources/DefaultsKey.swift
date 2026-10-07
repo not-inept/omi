@@ -39,6 +39,11 @@ enum DefaultsKey: String {
   case automationOwnerABackup = "automation_swap_owner_a_backup"
   case chatBridgeMode = "chatBridgeMode"
   case preferredMicrophoneDeviceUID = "preferredMicrophoneDeviceUID"
+  /// Hands-free listening (Settings → General): Always On + Always Respond + the chosen
+  /// microphone behind one switch. See `HandsFreeListening`.
+  case handsFreeListeningEnabled = "handsFreeListeningEnabled"
+  /// The Pause button of that switch. Pause keeps the switch on and the mode Off.
+  case handsFreeListeningPaused = "handsFreeListeningPaused"
   case multiChatEnabled = "multiChatEnabled"
   /// Opt-in: proactive notifications are also spoken out loud on delivery.
   case speakNotificationsAloud = "speakNotificationsAloud"

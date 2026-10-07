@@ -687,6 +687,8 @@ class AppState: ObservableObject {
     loadEnvironment()
 
     // Setup lifecycle observers for saving conversations
+    // A hands-free session that was listening at quit comes back listening (see HandsFreeListening).
+    HandsFreeListeningSettings.reconcileAtLaunch()
     setupLifecycleObservers()
 
     // Wire up memory pressure callback so ResourceMonitor can trim transcript state

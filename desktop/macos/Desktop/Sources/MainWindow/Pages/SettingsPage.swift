@@ -205,6 +205,11 @@ struct SettingsContentView: View {
   // mode is "Always On" — see `alwaysRespondSubtitle` in the General section.
   @AppStorage(AssistantSettings.alwaysRespondEnabledDefaultsKey) var alwaysRespondEnabled = false
 
+  // Hands-free listening: one switch over Always On + Always Respond + the chosen mic, with a
+  // Pause button. See `HandsFreeListening` and the General section's card.
+  @AppStorage(HandsFreeListeningSettings.enabledDefaultsKey) var handsFreeListeningEnabled = false
+  @AppStorage(HandsFreeListeningSettings.pausedDefaultsKey) var handsFreeListeningPaused = false
+
   // Log export state
 
   // Focus Assistant states
